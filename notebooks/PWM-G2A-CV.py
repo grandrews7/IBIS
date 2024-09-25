@@ -1,15 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[89]:
-
-
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[8]:
-
-
 import tensorflow as tf
 tf.__version__
 tf.compat.v1.disable_eager_execution()
@@ -27,6 +18,7 @@ import pandas as pd
 import logomaker
 
 import random
+import tqdm
 from tqdm import trange
 from subprocess import Popen, PIPE, run
 import sys
@@ -38,18 +30,17 @@ import random
 import glob
 import bioframe
 import os
+import tempfile
+from collections import Counter
+from sklearn.utils import shuffle
+from sklearn.metrics import roc_auc_score
+from sklearn.mixture import GaussianMixture
+from multiprocessing import Pool
+import pickle
+
+# In[2]:
 
 
-# In[90]:
-
-
-print(tf.__version__)
-
-
-# In[91]:
-
-
-#Models
 def construct_model(num_kernels=32,
                     kernel_width=24,
                     seq_len=None,
@@ -75,7 +66,8 @@ def construct_model(num_kernels=32,
             noisy_seq_rc = rc_op(noisy_seq)
         
         shared_conv = Conv1D(num_kernels, kernel_width,
-                             strides=1, padding=padding, 
+                             strides=1,
+                             padding=padding, 
                              activation=activation,
                              use_bias=use_bias,
                              kernel_initializer=kernel_initializer,
@@ -151,7 +143,7 @@ def construct_score_model(conv_weights):
                   strides=1, 
                   padding='valid', 
                   activation='linear', 
-                  use_bias=use_bias, 
+                  use_bias=False, 
                   kernel_initializer='zeros', 
                   bias_initializer='zeros',
                   trainable=False)
@@ -166,6 +158,9 @@ def construct_score_model(conv_weights):
     model.get_layer("score_conv").set_weights([conv_weights])
     print(model.summary())
     return model
+
+
+# In[3]:
 
 
 # In[10]:
@@ -295,6 +290,9 @@ def dinuclShuffle(s):
     return t
 
 
+# In[4]:
+
+
 def get_information_content(x):
     ic = x * np.log2((x + .001) / .25)
     if ic > 0:
@@ -362,6 +360,9 @@ def decode_sequence(encoded_seq, seq_dict = None):
 
 
 # In[11]:
+
+
+# In[5]:
 
 
 from  tensorflow.keras.callbacks import Callback
@@ -493,110 +494,7 @@ class SWA(Callback):
         self.model.set_weights(new_weights)
 
 
-# In[154]:
-
-
-class dataGen(Sequence):
-    def __init__(self, posSeqs, 
-                 posWeights = None,
-                 negSeqs=None,
-                 batchSize = 32,
-                 seqsPerEpoch=10000,
-                 padBy = 24):
-        
-        self.posSeqs = posSeqs
-        self.posWeights = posWeights
-        self.nPos = len(self.posSeqs)
-        self.seqsPerEpoch = seqsPerEpoch
-        if self.nPos < (self.seqsPerEpoch / 2):
-            if self.posWeights is None:
-                self.posSeqs = list(np.random.choice(self.posSeqs, int(self.seqsPerEpoch / 2)))
-                self.nPos = len(self.posSeqs)
-            else:
-                tmp = list(zip(self.posSeqs, self.posWeights))
-                tmp = random.choices(tmp, k=int(self.seqsPerEpoch / 2))
-                self.posSeqs, self.posWeights = map(list, zip(*tmp))
-            
-        if negSeqs is not None:
-            self.negSeqs = negSeqs
-            self.nNeg = len(self.negSeqs)
-        else:
-            self.negSeqs = None
-            
-        
-        if self.negSeqs is not None:
-            self.L = np.max([len(x) for x in self.posSeqs + self.negSeqs])
-        else:
-            self.L = np.max([len(x) for x in self.posSeqs])
-        
-        self.batchSize = batchSize
-        self.b2 = self.batchSize // 2
-        self.padBy = padBy
-        
-        self.labels = np.array([1 for i in range(self.b2)] + [0 for i in range(self.b2)])
-        self.epoch = 0
-        self.nIter = 0
-        self.shuffleEvery = int(self.nPos // (self.seqsPerEpoch / 2) )      
-        print(self.shuffleEvery)
-    
-    def __len__(self):
-        return(int(np.floor(self.seqsPerEpoch / self.batchSize)))
-    
-    def on_train_begin(self):
-        tmp = list(zip(self.posSeqs, self.posWeights))
-        tmp = sorted(tmp, key=lambda x: x[1], ascending=False)
-        print(tmp[:10])
-        self.posSeqs, self.posWeights = map(list, zip(*tmp))
-        
-    def on_epoch_end(self):
-        if self.epoch == self.shuffleEvery:
-            print("Shuffling positive sequences")
-            if self.posWeights is None:
-                random.shuffle(self.posSeqs)
-            else:
-                tmp = list(zip(self.posSeqs, self.posWeights))
-                random.shuffle(tmp)
-                self.posSeqs, self.posWeights = map(list, zip(*tmp))
-
-    
-    def __getitem__(self, index):
-        idx = (self.nIter * self.b2) % (self.nPos - self.b2)
-        posSample = self.posSeqs[idx:idx+self.b2]
-        if self.posWeights is not None:
-            posWeights = self.posWeights[idx:idx+self.b2]
-            
-        self.nIter += 1
-        
-        if self.negSeqs is not None:
-            negSample = random.sample(self.negSeqs, self.b2)
-        else:
-            negSample = [dinuclShuffle(x) for x in posSample]
-            if self.posWeights is not None:
-                # negWeights = posWeights
-                # negWeights = [1.0 for i in range(self.b2)]
-                negWeights = posWeights
-                
-            
-        X = 0.25 * np.ones((self.batchSize, 2*self.padBy + self.L, 4))
-        if self.posWeights is not None:
-            weights = posWeights + negWeights
-            
-        for i,seq in enumerate(posSample + negSample):
-            l = len(seq)
-            start = self.padBy + (self.L - l) // 2
-            stop = start + l
-            X[i,start:stop,:] = encode_sequence(seq)
-            
-        if self.posWeights is not None:
-            return(X, self.labels, np.array(weights))
-        else:
-            return(X, self.labels)
-
-
-# In[182]:
-
-
-# In[92]:
+# In[6]:
 
 
 def get_rc(re):
@@ -675,7 +573,13 @@ def find_enriched_gapped_kmers(pos_seqs, neg_seqs, halflength, ming, maxg, alpha
     return top_words
 
 
-def load_peaks(peaks):
+# In[7]:
+
+
+# In[162]:
+
+
+def load_peaks(peaks, l=None):
     data = pd.read_csv(peaks, header=0, sep="\t", skipfooter=1)
     data = data.rename(columns = {"#CHROM" : "chrom", 
                                   "START" : "start", 
@@ -683,9 +587,14 @@ def load_peaks(peaks):
                                   "fold_enrichment" : "signal",
                                   " supporting_peakcallers" : "peak_callers"})
     data["n_peak_callers"] = data.peak_callers.str.count(",") + 1
+    if l is not None:
+        w2 = l // 2
+        data["start"] = data["abs_summit"] - w2
+        data["end"] = data["abs_summit"] + w2
     return(data)
 
-def merge_peaks(peaks_dfs):
+def merge_peaks(peaks_dfs, l=200):
+    w2 = l // 2
     toReturn = peaks_dfs[0].copy()
     for i in range(1, len(peaks_dfs)):
         toReturn = bioframe.closest(toReturn, peaks_dfs[i], 
@@ -698,423 +607,233 @@ def merge_peaks(peaks_dfs):
                                               "end_1" : "end", 
                                               "signal_1" : "signal",
                                               "abs_summit_1" : "abs_summit"})
+    toReturn["start"] = toReturn["abs_summit"] - w2
+    toReturn["end"] = toReturn["abs_summit"] + w2
     
     return(toReturn)
 
 
-# TF = "GABPA"
-# assay = "CHS"
+# In[8]:
+
+
+def getFasta(bf, genomeFasta):
+    genome = Fasta(genomeFasta, as_raw=True, sequence_always_upper=True)
+    if "strand" in  bf:
+        bf.loc[:, "seq"] = [genome[chrom][start:end] if strand == "+" else get_rc(genome[chrom][start:end]) for chrom, start, end, strand in zip(bf.chrom, bf.start, bf.end, bf.strand)]
+    else:
+        bf.loc[:,"seq"] = [genome[chrom][start:end] for chrom, start, end in zip(bf.chrom, bf.start, bf.end)]
+    return(bf)
+
+
+# In[9]:
+
+
+def get_ZMotif_motifs(motifs_file):
+    df = pd.read_csv(motifs_file, sep="\t", header=0)
+    
+    kernels = sorted(df.kernel.unique().tolist())
+    AUCs = dict(zip(df.kernel, df.auc))
+    kernel = max(AUCs, key=AUCs.get)
+    PPMs = []
+    tmp_df = df[df["kernel"] == kernel]
+    ppm = logomaker.alignment_to_matrix(tmp_df.seq, to_type="probability")
+    ppm = ppm[["A", "C", "G", "T"]]
+    w = ppm.shape[0]
+    for i in range(w-30+1):
+        PPMs.append([motifs_file, ppm.iloc[i:i+30,:]])
+    return(PPMs)
+
+
+# In[10]:
+
+
+def run_imap_multiprocessing(func, argument_list, num_processes):
+
+    pool = Pool(processes=num_processes)
+
+    result_list_tqdm = []
+    for result in tqdm.tqdm(pool.imap(func=func, iterable=argument_list), total=len(argument_list)):
+        result_list_tqdm.append(result)
+
+    return result_list_tqdm
+
+def ppm_to_pwm(ppm):
+    pwm = ppm + 1e-5
+    pwm = pwm / 0.25
+    pwm = np.log2(pwm)
+    return(pwm)
+
+def flatten(xss):
+    return [x for xs in xss for x in xs]
+
+
+# In[11]:
+
+
+# STREME_files = glob.glob("/pi/zhiping.weng-umw/home/gregory.andrews-umw/IBIS/Results/Genomic/{}-{}*/streme.pkl".format(TF, train_assay))
+#print(STREME_files)
+
+
+# In[12]:
+
+
+def get_STREME_motifs(stremePkl):
+    with open(stremePkl, "rb") as f:
+        PPMs = pickle.load(f)
+    return([[stremePkl + "-" + _, PPMs[_]] for _ in PPMs])
+
+
+# In[13]:
+
+
+# STREME_PPMs = run_imap_multiprocessing(get_STREME_motifs, STREME_files, 12)
+# STREME_PPMs = flatten(STREME_PPMs)
+
+
+# In[14]:
+
+
+# len(STREME_PPMs)
+
+
+# In[15]:
+
+
+# PPMs = ZMotif_PPMs + STREME_PPMs
+# PWMs = [ppm_to_pwm(_[1]) for _ in PPMs]
+
+
+# In[17]:
+
+
+def get_data(TF, assay, peaks="all", cycle = "last", l = 300):
+    genomeFasta = "/home/gregory.andrews-umw/data/genome/hg38.fa"
+    if assay == "CHS":
+        dataFiles = glob.glob("/pi/zhiping.weng-umw/home/gregory.andrews-umw/IBIS/data/" + assay + "/" + TF + "/*" )
+        print(dataFiles)
+        print(l)
+        CHS_data = [load_peaks(_, l) for _ in dataFiles]
+        if peaks == "shared":
+            print("Merging peaks")
+            CHS_data = merge_peaks(CHS_data, l=l)
+        else:
+            CHS_data = pd.concat(CHS_data)
+
+        data = CHS_data[["chrom", "start", "end", "abs_summit", "signal"]]
+    else:
+        GHTS = glob.glob("/pi/zhiping.weng-umw/home/gregory.andrews-umw/IBIS/data/" + assay + "/" + TF + "/*" )
+        cycles = sorted([os.path.basename(_).split(".")[-2] for _ in GHTS])
+        print(cycles)
+        if cycle == "last":
+            max_cycle = cycles[-1]
+            print("Last cycle: {}".format(max_cycle))
+            GHTS = [_ for _ in GHTS if "." + max_cycle + "." in _]
+        print(l)
+        GHTS_data = [load_peaks(_, l) for _ in GHTS]
+        
+        GHTS_data = pd.concat(GHTS_data)
+        
+        data = GHTS_data[["chrom", "start", "end", "abs_summit", "signal"]]
+        print(data.shape)
+    data = data.sort_values(['chrom', 'start'], ascending=[True, True]).reset_index(drop=True)
+    data = getFasta(data, genomeFasta)
+    return(data)
+
+
+# In[18]:
+
+
+def get_auroc(x):
+    yTest, yPred = x
+    return(roc_auc_score(yTest, yPred))
+
+
+# In[39]:
+
+
+def get_PPMs(TF, train_assay):
+    motifs_files = glob.glob("/pi/zhiping.weng-umw/home/gregory.andrews-umw/IBIS/Results/Genomic/{}-{}*/motifs.txt.gz".format(TF, train_assay))
+    ZMotif_PPMs = flatten(run_imap_multiprocessing(get_ZMotif_motifs, motifs_files, 10))
+    STREME_files = glob.glob("/pi/zhiping.weng-umw/home/gregory.andrews-umw/IBIS/Results/Genomic/{}-{}*/streme.pkl".format(TF, train_assay))
+    print(STREME_files)
+    STREME_PPMs = run_imap_multiprocessing(get_STREME_motifs, STREME_files, 10)
+    STREME_PPMs = flatten(STREME_PPMs)
+    PPMs = ZMotif_PPMs + STREME_PPMs
+    return(PPMs)
+
+
+# In[40]:
+
+
+def score_motifs(PPMs, TF, test_assay):
+    genomeFasta = "/home/gregory.andrews-umw/data/genome/hg38.fa"
+    PWMs = [ppm_to_pwm(_[1]) for _ in PPMs]
+    weights = np.zeros([len(PWMs), 30, 4])
+    for i, pwm in enumerate(PWMs):
+        w = pwm.shape[0]
+        if w > 0:
+            start = (30 - w) // 2
+            stop = start + pwm.shape[0]
+            weights[i,start:stop,:] = pwm
+    weights = np.moveaxis(weights,0,-1)
+    model = construct_score_model(weights)
+    aug_by = 0
+    if test_assay == "GHTS":
+        l = 100
+    else:
+        l = 300
+        
+    nNegs = 1
+    data = get_data(TF, test_assay,
+                    peaks="all", 
+                    cycle="last", l=l)
+    min_n = 20000
+    # if data.shape[0] < min_n:
+    #     data = data.sample(n=min_n, replace=True, weights="signal")
+    data = data.sample(n=min_n, replace=True, weights="signal")
+    # else:
+    #     data = data[data["chrom"] == "chr1"].reset_index(drop=True)
+
+    if aug_by > 0:
+        aug = np.random.randint(-aug_by, aug_by, size=data.shape[0])
+        data.loc[:,"start"] = data["start"] + aug
+        data.loc[:,"end"] = data["end"] + aug
+    data = data.sort_values(['chrom', 'start'], ascending=[True, True]).reset_index(drop=True)
+    data = getFasta(data, genomeFasta)
+    
+    Xpos = np.array([encode_sequence(seq) for seq in data.seq])
+    negSeqs = []
+    for seq in data.seq:
+        for i in range(nNegs):
+            negSeqs.append(dinuclShuffle(seq))
+    
+    Xneg = np.array([encode_sequence(seq) for seq in negSeqs])
+    yTest = np.array([1 for _ in range(Xpos.shape[0])] + [0 for _ in range(Xneg.shape[0])])
+    X = np.vstack([Xpos, Xneg])
+    scores = model.predict(X, verbose=1)
+    aucs = run_imap_multiprocessing(get_auroc, [[yTest, scores[:,i]] for i in range(len(PWMs))], 10)
+    return(aucs)
+
+
+# In[42]:
+
 
 TF = sys.argv[1]
-assay = sys.argv[2]
-
-# In[204]:
-
-
-w = 32
-num_kernels = 16
-use_bias = False
-epochs=1000
-w2 = 50
-
-prefix = TF + "-" + assay
-if assay == "All":
-    dataFiles = glob.glob("/home/gregory.andrews-umw/IBIS/data/*/" + TF + "/*" )
-    data = [load_peaks(_) for _ in dataFiles]
-    data = pd.concat(data)
-    data = data.rename(columns = {"fold_enrichment" : "signal"})
-    data = data[["chrom", "start", "end", "abs_summit", "signal"]]
-
-elif assay == "Both":
-    CHS = glob.glob("/home/gregory.andrews-umw/IBIS/data/" + "CHS" + "/" + TF + "/*" )
-    GHTS = glob.glob("/home/gregory.andrews-umw/IBIS/data/" + "GHTS" + "/" + TF + "/*" )
-    cycles = sorted([os.path.basename(_).split(".")[-2] for _ in GHTS])
-    max_cycle = cycles[-1]
-    GHTS = [_ for _ in GHTS if "." + max_cycle + "." in _]
-    GHTS_data = [load_peaks(_) for _ in GHTS]
-    GHTS_data = pd.concat(GHTS_data)
-    GHTS_data = GHTS_data[["chrom", "start", "end", "abs_summit", "signal"]]
-    
-    CHS_data = [load_peaks(_) for _ in CHS]
-    CHS_data = merge_peaks(CHS_data)
-    CHS_data = CHS_data[["chrom", "start", "end", "abs_summit", "signal"]]
-    data = pd.concat([CHS_data, GHTS_data])
-
-elif assay == "CHS":
-    dataFiles = glob.glob("/home/gregory.andrews-umw/IBIS/data/" + assay + "/" + TF + "/*" )
-    CHS_data = [load_peaks(_) for _ in dataFiles]
-    CHS_data = merge_peaks(CHS_data)
-    data = CHS_data[["chrom", "start", "end", "abs_summit", "signal"]]
-else:
-    # assay = GHTS, must provide cycle
-    cycle = sys.argv[3]
-    prefix += "-" + cycle
-    dataFiles = glob.glob("/home/gregory.andrews-umw/IBIS/data/" + assay + "/" + TF + "/*" + cycle + "*")
-    data = [load_peaks(_) for _ in dataFiles]
-    data = pd.concat(data)
-
-data = data.sort_values(['chrom', 'start'], ascending=[True, True]).reset_index(drop=True)
-
-
-print(data.head())
-# sort like sort -k1,1 -k2,2n
-
-
-genomeFasta = "/home/gregory.andrews-umw/data/genome/hg38.fa"
-genome = Fasta(genomeFasta, as_raw=True, sequence_always_upper=True)
-
-
-# In[209]:
-
-
-posSeqs = []
-for i in trange(data.shape[0]):
-    row = data.iloc[i]
-    chrom, start, stop, summit = row.chrom, row.start, row.end, row.abs_summit
-    start, stop = int(start), int(stop)
-    summit = int(summit)
-    seq = genome[chrom][summit-w2:summit+w2]
-    posSeqs.append(seq)
-
-
-# In[210]:
-
-
-negSeqs =  [dinuclShuffle(_) for _ in posSeqs]
-
-
-# In[211]:
-
-
-kmer_w = 6
-kmers = find_enriched_gapped_kmers(posSeqs, negSeqs,  3, 0, 18, "dna", False, 8)
-
-
-# In[212]:
-
-
-print(kmers)
-
-
-# In[213]:
-
-
-
-# In[214]:
-
-
-holdOutP = .1
-n = len(posSeqs)
-weights = data["signal"].tolist()
-
-tmp = list(zip(posSeqs, weights))
-random.shuffle(tmp)
-posSeqs, weights = map(list, zip(*tmp))
-   
-posTrainSeqs = posSeqs[:int((1 - holdOutP)*n)]
-posTestSeqs = posSeqs[int((1 - holdOutP)*n):]
-
-trainWeights = weights[:int((1 - holdOutP)*n)]
-tmp = list(zip(posTrainSeqs, trainWeights))
-tmp = sorted(tmp, key = lambda x: x[1])[::-1]
-posTrainSeqs, trainWeights = map(list, zip(*tmp))
-
-
-# In[182]:
-
-
-print(len(posTrainSeqs), len(trainWeights))
-
-
-# In[215]:
-
-
-trainGen = dataGen(posTrainSeqs,
-                   padBy=w)
-testGen = dataGen(posTestSeqs, 
-                  padBy=w,
-                  seqsPerEpoch=1000)
-
-
-# In[216]:
-
-
-model = construct_model(num_kernels=num_kernels,
-                        kernel_width=w,
-                        use_bias=use_bias,
-                        l1_reg=.00001)
-
-
-# In[217]:
-
-
-if use_bias:
-    conv_weights, conv_bias = model.get_layer("shared_conv").get_weights()
-else:
-    conv_weights = model.get_layer("shared_conv").get_weights()[0]
-
-
-# In[218]:
-
-
-for i in range(len(kmers)):
-    kmer = kmers[i]
-    l = len(kmer)
-    conv_weights[((w - l)//2):(((w - l)//2)+l),:,i] = encode_sequence(kmer)
-
-
-# In[219]:
-
-
-if use_bias:
-    model.get_layer("shared_conv").set_weights([conv_weights, conv_bias])
-else:
-    model.get_layer("shared_conv").set_weights([conv_weights])
-
-
-# In[220]:
-
-
-min_lr = .001
-max_lr = .1
-lr_decay = (min_lr / max_lr) ** (1 / epochs)
-schedule = SGDRScheduler(min_lr=min_lr,
-                             max_lr=max_lr,
-                             steps_per_epoch=trainGen.__len__(),
-                             lr_decay=lr_decay,
-                             cycle_length=1,
-                             mult_factor=1.0, 
-                             shape="triangular")
-
-swa = SWA(epochs)
-
-
-# In[221]:
-
-
-history = model.fit(trainGen, 
-                    steps_per_epoch = trainGen.__len__(), 
-                    verbose=2, 
-                    epochs=epochs,
-                    workers=4,
-                    callbacks = [schedule, swa],
-                    validation_data = testGen,
-                    validation_steps = testGen.__len__())
-
-
-model.save_weights(prefix + ".h5")
-
-
-if use_bias:
-    conv_weights, conv_bias = model.get_layer("shared_conv").get_weights()
-else:
-    conv_weights = model.get_layer("shared_conv").get_weights()[0]
-
-
-# In[223]:
+train_assay = sys.argv[2]
+test_assay = sys.argv[3]
+PPMs = get_PPMs(TF, train_assay)
 
 
 AUCs = []
-nSteps = 200
-from sklearn.metrics import roc_auc_score
-for i in range(num_kernels):
-    tmp_conv_weights = np.zeros(conv_weights.shape)
-    if use_bias:
-        tmp_bias = np.zeros(num_kernels)
-    tmp_conv_weights[:,:,i] = conv_weights[:,:,i]
-    
-    if use_bias:
-        tmp_bias[i] = conv_bias[i]
-    
-    if use_bias:
-        model.get_layer("shared_conv").set_weights([tmp_conv_weights, tmp_bias])
-    else:
-        model.get_layer("shared_conv").set_weights([tmp_conv_weights])
-    yPred = model.predict(testGen, steps=nSteps)
-    yTest = np.array(nSteps*([1 for i in range(16)] + [0 for i in range(16)]))
-    AUCs.append(roc_auc_score(yTest, yPred))
-print(AUCs)
+for i in range(1):
+    AUCs.append(score_motifs(PPMs, TF, test_assay))
 
 
-# In[224]:
+# In[44]:
 
 
-scan_model = construct_scan_model(conv_weights)
-
-
-# In[225]:
-
-
-anr = False
-thresh = 0
-with open(prefix + ".motifs.bed", "w") as f:
-    for i in trange(data.shape[0]):
-        chrom, start, stop = data.iloc[i][:3]
-        start, stop = int(start), int(stop)
-        seq = genome[chrom][start:stop]
-        
-        encoded_seq = np.vstack((0.25*np.ones((w,4)), encode_sequence(seq), 0.25*np.ones((w,4))))
-        encoded_seq_rc = encoded_seq[::-1,::-1]
-
-        conv_for = scan_model.predict(np.expand_dims(encoded_seq, axis = 0), verbose=0)[0]
-        conv_rc = scan_model.predict(np.expand_dims(encoded_seq_rc, axis = 0), verbose=0)[0]
-
-        for k in range(num_kernels):
-            if anr:
-                matches_for = np.argwhere(conv_for[:,k] > thresh)[:,0].tolist()
-                matches_rc = np.argwhere(conv_rc[:,k] > thresh)[:,0].tolist()
-                for x in matches_for:
-                    motif_start = x - w 
-                    motif_end = motif_start + w
-                    score = conv_for[x,k]
-                    pfms[k] += encoded_seq[x:x+w,:]
-
-                for x in matches_rc:
-                    motif_end = x + w
-                    motif_start = motif_end - w 
-                    score = conv_rc[x,k] 
-                    pfms[k] += encoded_seq_rc[x:x+w,:]
-                    n_instances[k] += 1
-                
-            else:
-                maxFor = np.max(conv_for[:,k])
-                maxRC = np.max(conv_rc[:,k])
-
-                if maxFor > thresh or maxRC > thresh:
-                    if maxFor > maxRC:
-                        x = np.argmax(conv_for[:,k])
-                        motif_start = x - w 
-                        motif_end = motif_start + w
-                        score = conv_for[x,k]
-                        motifSeq = decode_sequence(encoded_seq[x:x+w,:])
-                        print(chrom, start+motif_start, start+motif_end, k, score, "+", motifSeq, file=f, sep="\t")
-                    else:
-                        x = np.argmax(conv_rc[:,k])
-                        motif_end = x + w
-                        motif_start = motif_end - w 
-                        score = conv_rc[x,k] 
-                        motifSeq = decode_sequence(encoded_seq_rc[x:x+w,:])
-                        print(chrom, stop-motif_start, stop-motif_start+w, k, score, "-", motifSeq, file=f, sep="\t")
-
-
-# In[226]:
-
-
-motifs = pd.read_csv(prefix + ".motifs.bed", sep="\t", names=["chrom", "start", "end", "kernel", "score", "strand", "seq"])
-motifs.head()
-
-
-# In[227]:
-
-
-motifs = bioframe.closest(motifs, data, suffixes=('_1','_2'))
-
-
-# In[228]:
-
-
-motifs.head()
-
-pfms = []
-nInstances = []
-for i in range(num_kernels):
-    tmp = motifs[motifs["kernel_1"] == i]
-    if tmp.shape[0] > 0:
-        seqs_weights = zip(tmp.seq_1, tmp.signal_2)
-        pfm = np.array([encode_sequence(_[0]) *  _[1] for _ in seqs_weights])
-        pfm = np.sum(pfm, axis=0)
-    else:
-        pfm = np.ones([w,4])
-    pfms.append(pfm)
-    nInstances.append(tmp.shape[0])
-
-
-# In[231]:
-
-
-with open(prefix + ".meme", "w") as f:
-    print("MEME version 4\n", file=f)
-    print("ALPHABET= ACGT\n", file=f)
-    print("strands: + -\n", file=f)
-    print("Background letter frequencies", file=f)
-    print("A 0.25 C 0.25 G 0.25 T 0.25\n", file=f)
-    
-    for i in range(num_kernels):
-        print("MOTIF {}".format(i), file=f)
-        print("letter-probability matrix: alength= 4 w= {} nsites= {}".format(w, nInstances[i]), file=f)
-        pfm = pfms[i]
-        ppm = pfm/pfm.sum(axis=1, keepdims=True)
-        for i in range(w):
-            print(*ppm[i,:].flatten().tolist(), sep="\t", file=f)
-        print(file=f)
-
-
-# In[232]:
-
-
-with open(prefix + ".TOMTOM.out", "w") as f:
-    run(["tomtom", "--text", "-thresh", "1", prefix + ".meme", "/home/gregory.andrews-umw/IBIS/misc/H12CORE_meme_format.meme"], stdout=f)
-
-
-# In[233]:
-
-
-matches = []
-pVals = []
-for i in range(num_kernels):
-    with open(prefix + ".TOMTOM.out") as f:
-        for line in f:
-            split = line.strip().split("\t")
-            try:
-                if int(split[0]) == i:
-                    matches.append(split[1])
-                    pVals.append(float(split[3]))
-                    break
-            except:
-                pass
-
-
-# In[234]:
-
-
-fig, axes = plt.subplots(4, 4, figsize=(20,8), tight_layout=True)
-toSave = {}
-for i in range(num_kernels):
-    ax = axes.flatten()[i]
-    pfm = pfms[i] + 1
-    ppm = pfm/pfm.sum(axis=1, keepdims=True)
-    ppm = pd.DataFrame(ppm, columns=["A", "C", "G", "T"])
-    trimmed_ppm = trim_ppm(ppm.values, min_info=0.0)[0]
-    trimmed_ppm = pd.DataFrame(trimmed_ppm, columns=["A", "C", "G", "T"])
-    ic = ppm.applymap(get_information_content)
-    
-    #ic = trimmed_ppm.map(get_information_content)
-    title = "{}\n(p = {:.2e}) N={}; auc={:.3f}".format(matches[i], pVals[i], nInstances[i], AUCs[i])
-    logomaker.Logo(ic, ax=ax)
-    ax.set_title(title)
-    ax.set_ylim([0,2])
-    toSave[i] = {"ppm" : ppm.values,
-                 "trimmed_ppm" : trimmed_ppm,
-                 "weights" : conv_weights[:,:,i],
-                 "auc" : AUCs[i],
-                 "p" : pVals[i],
-                 "match" : matches[i],  
-                 "n" : nInstances[i]}
-    
-    
-for i in range(num_kernels,16):
-    fig.delaxes(axes.flatten()[i])
-    
-plt.savefig(prefix + ".png")
-
-
-# In[236]:
-
-
-with open(prefix + ".pkl", "wb") as f:
-    pickle.dump(toSave, f)    
-
-model.load_weights(prefix + ".h5")
-X = np.array([encode_sequence(_) for _ in posSeqs])
-y_pred = model.predict(X)
-np.save(prefix + ".yPred.npy", y_pred)
+aucs = np.mean(AUCs, axis=0)
+ppm = PPMs[np.argmax(aucs)][1]
+np.save("/home/gregory.andrews-umw/IBIS/Results/Best-Motifs/{}-{}-{}.npy".format(TF, train_assay, test_assay), ppm)
+with open("/home/gregory.andrews-umw/IBIS/Results/Best-Motifs/{}-{}-{}.pkl".format(TF, train_assay, test_assay), "wb") as f:
+    pickle.dump([PPMs, aucs], file=f)
