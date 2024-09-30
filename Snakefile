@@ -16,17 +16,13 @@ reps = [i for i in range(nReps)]
 
 G2A_assays = ["CHS", "GHTS"]
 HTS_TFs = os.listdir("./data/HTS")
-HTS_fastqs = glob.glob("/home/gregory.andrews-umw/IBIS/data/HTS/*/*fastq.gz")
+HTS_fastqs = glob.glob("./data/HTS/*/*fastq.gz")
 HTS_TFs_cycles = []
 for fastq in HTS_fastqs:
     split = os.path.basename(fastq).split("_")
     HTS_TFs_cycles.append(split[0] + "-" + split[2])
 HTS_TFs_cycles = list(set(HTS_TFs_cycles))
 
-
-# For debugging and testing
-#HTS_TFs_cycles = ['LEF1-C4']
-#reps = [i for i in range(1)]
 rule all:
     input: 
         expand("Results/PWM-G2A-ZMotif-STREME/{tf}-{assay}-{peaks}-{n}-{rep}/motifs.txt.gz", tf=G2A_TFs, assay=G2A_assays, peaks=peaks, n=n_motifs, rep=reps),
