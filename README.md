@@ -17,6 +17,12 @@ Verify data integrity
 
 `CHS  GHTS  hg38.fa  hg38.fa.fai  HTS  PBM  SMS`
 
+Each assay folder has all TFs, leaderboard and final
+`ls data/CHS`
+
+`CAMTA1  LEUTX  PRDM13  SALL3  USF3   ZBED5  ZNF251  ZNF367  ZNF407  ZNF518B
+GABPA   MYF6   PRDM5   SP140  ZBED2  ZNF20  ZNF362  ZNF395  ZNF493  ZNF648`
+
 Install Mamba
 ```
 conda install -y -n base -c conda-forge mamba
