@@ -619,7 +619,6 @@ use_bias = True
 epochs = 1000
 l2 = 0.00001
 l1 = 0.00001
-# In[60]:
 
 
 seqs = []

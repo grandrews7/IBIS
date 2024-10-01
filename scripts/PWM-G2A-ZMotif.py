@@ -841,7 +841,7 @@ history = model.fit(train_gen,
                     steps_per_epoch = train_gen.__len__(), 
                     verbose=2, 
                     epochs=epochs,
-                    workers=1,
+                    workers=4,
                     callbacks = [schedule, swa],
                     validation_data = test_gen,
                     validation_steps = test_gen.__len__(), 
@@ -953,20 +953,27 @@ df["end"] = df["end"] + 4
 df = getFasta(df, genomeFasta)
 df["auc"] = df.kernel.map(AUCs)
 df.to_csv(output_dir + "/motifs.txt.gz", index=False, sep="\t")
-
+os.remove(output_dir + "/motifs.bed")
 fig, axes = plt.subplots(4,4, figsize=(20,8), tight_layout=True)
 for plot_i, i in enumerate(np.argsort(list(AUCs.values()))[::-1]):
     n = df[df["kernel"] == i].shape[0]
-    auc = AUCs[i]
-    ax = axes.flatten()[plot_i]
-    ppm = logomaker.alignment_to_matrix(df[df["kernel"] == i].seq, to_type="counts")
-    ppm = ppm[["A", "C", "G", "T"]]
-    ppm = ppm.div(ppm.sum(axis=1), axis=0)
-    logomaker.Logo(ppm.applymap(get_information_content), ax=ax)
-    ax.set_ylim([0,2])
-    ax.set_xlim([0, w+8])
-    ax.set_xticks([0, w+8])
-    ax.set_title("Kernel {0}; N = {1}; auROC = {2:.2f}".format(i, n, auc))
+    if n > 0:
+        auc = AUCs[i]
+        ax = axes.flatten()[plot_i]
+        ppm = logomaker.alignment_to_matrix(df[df["kernel"] == i].seq, to_type="probability")
+        for nuc in ["A", "C", "G", "T"]:
+            if nuc not in ppm.columns:
+                ppm[nuc] = 0.0
+        ppm = ppm[["A", "C", "G", "T"]]
+        logomaker.Logo(ppm.applymap(get_information_content), ax=ax)
+        ax.set_ylim([0,2])
+        ax.set_xlim([0, w+8])
+        ax.set_xticks([0, w+8])
+        ax.set_title("Kernel {0}; N = {1}; auROC = {2:.2f}".format(i, n, auc))
+    else:
+        ax = axes.flatten()[plot_i]
+        fig.delaxes(ax)
+        
 for i in range(n_motifs, 16):
     fig.delaxes(axes.flatten()[i])
 plt.savefig(output_dir + "/logos.png")
