@@ -18,6 +18,7 @@ Verify data integrity
 `CHS  GHTS  hg38.fa  hg38.fa.fai  HTS  PBM  SMS`
 
 Each assay folder has all TFs, leaderboard and final
+
 `ls data/CHS`
 
 `CAMTA1  LEUTX  PRDM13  SALL3  USF3   ZBED5  ZNF251  ZNF367  ZNF407  ZNF518B
