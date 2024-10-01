@@ -111,3 +111,29 @@ python3 scripts/PWM-G2A-ZMotif.py -tf {Genomic TF} -assay {CHS|GHTS} -peaks {all
   13. `seq_peak` sequence of peak
   14. `distance` from motif site to peak (should all be 0)
   15. `auc` auROC of corresponding kernel / motif. Used for ranking significance of motifs
+
+### ZMotif PWM-A2G
+```
+python3 scripts/PWM-A2G-ZMotif.py -TF {wildcards.tf} -cycle {wildcards.cycle} -o {Results Directory} -d data 2> log.err 1> log.out
+```
+
+#### Inputs
+- `tf`: Transcription factor of interest. To see the list of available TFs run `ls data/HTS`
+
+- `cycle`: Cycle to pull reads from. FASTQS from multiple replicates within a cycle will be concatenated
+
+-  `o`: Output directory to save results to
+
+-  `d`: Directory where challenge data is stored.
+
+#### Outputs
+- `motifs.txt.gz` Technically a BED file. Locations of motif sites within the input peaks. Columns are...
+  1. `chrom` chromosome of motif site
+  2. `start` start position of motif site
+  3. `stop` end position of motif site
+  4. `kernel` convolution kernel motif site is from
+  5. `score` score of convolution kernel over motif site
+  6. `strand` strand of motif site
+  7. `seq` sequence of motif site
+  8. `og_seq` original read
+  9. `auc` auROC of corresponding kernel / motif. Used for ranking significance of motifs
