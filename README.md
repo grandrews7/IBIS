@@ -12,6 +12,10 @@ Download and extract the nececessary data. The workflow is executed on all TFs, 
 wget -O data.tar.gz  https://www.dropbox.com/s/p97mdpesn196lay/data.tar.gz?dl=0
 tar -xzvf data.tar.gz
 ```
+Verify data integrity
+`ls data`
+`CHS  GHTS  hg38.fa  hg38.fa.fai  HTS  PBM  SMS`
+
 Install Mamba
 ```
 conda install -y -n base -c conda-forge mamba
@@ -63,17 +67,35 @@ snakemake --use-conda --cores 80
 2. We process the input peaks for the PWM-G2A data in 2 ways, designated `all` and `shared`. `all` concatnates all provided peaks across datasets while `shared` calculates a new set of merged, shared peaks. The original intent was to do this for both CHS and GHTS data, but at least 1 TF in the final set did not have any peaks shared between datasets so we pivoted to only do this for CHS data. Therefore, GHTS processed with `shared` peaks are simply more replicates of `all`.
 
 
-## PWM G2A
-The following 4 notebooks walk you through the 3 major steps (plus 1 additional notebook for ploting and saving motifs) of the PWM-G2A workflow.
+## Training the models
+Below we provide the notebooks and corresponding scripts exectured by the pipeline to train the CNN models and obtain the deep learned motifs. 
 
-Start a jupyter-lab server in our pre-built docker image (must be done in docker, jupyter-lab installation is broken in conda environment)
+The scripts can be executed in the provided Docker container or conda environment. To start jupyter-lab server in our pre-built docker image (must be done in docker, jupyter-lab installation is broken in conda environment)
 ```
 docker container run -it --rm -p 8888:8888 andrewsg/ibis:1.15 jupyter-lab --port=8888 --ip=* --no-browser --allow-root
 ```
+### ZMotif PWM-G2A
+```
+python3 scripts/PWM-G2A-ZMotif.py -tf {Genomic TF} -assay {CHS|GHTS} -peaks {all|shared} -n {# motifs / kernels} -o {Results Directory} -g ./data/hg38.fa -d ./data 2> log.err 1> log.out
+```
 
-### Relevant notebooks / walkthrough
-1. `PWM-G2A-ZMotif.ipynb` Train a kmer-initialized, single kernel, CNN on GABPA CHS data and obtain the motif from the multiple sequence alignment of all seqlets that pass through the convolution kernel
-2. `PWM-G2A-STREME.ipynb` Run STREME on the MSE
-3. `PWM-G2A-CV.ipynb`
-4. `PWM-G2A-Plot-Best-Motifs.ipynb`
+#### Inputs
+- `tf`: Transcription factor of interest. To see the list of available TFs run `ls data/CHS` or `ls data/GHTS`
 
+- `assay`: `CHS` or `GHTS`
+
+- `peaks`: `all` or `shared`. For `CHS` only. `GHTS` will use `all` regardless of setting. `all` will concatenate all peaks to use as input and motif construction. `shared` will construct a set of shared, merged peaks
+
+-  `n`: Number of motifs to find. This will be the number of convolution kernels of the trained CNN. 1 works well in motifs cases to find the motif of the TF of interest
+
+-  `o`: Output directory to save results to
+
+-  `g`: Path to hg38 genome fasta
+
+-  `d`: Directory where challenge data is stored.
+
+#### Outputs
+- 'motifs.txt.gz` Technically a `BED` file. Locations of motif sites within the input peaks.
+  ```
+  chr1    959248  959288  0       16.067575       +       CCCGAAGCGTGCACCCCACTTCCGGCCCCAGAATGCCGCG        chr1    959036  959536  959286  31.4865 AAGCCCGAAGCTAGGAACTCGTCCACCGTCAGCTCCGCCAGGCGCCTGCGGGTCACGCAGGAGTCACAGCTGCCCGCACGCCCAGCTCGCCCCAGCCCCGCTGAGAGGAGCAAGAAAAGCCCCCTTGGATACAGACACCCACCGGGAGGCCAAATCGGCCCTCGGACCCGCGGCTTACCTCTTGCGGCTCCCCGCAGCTGCCATGACACCAACCCGAAGCGTGCACCCCACTTCCGGCCCCAGAATGCCGCGCGGCTGCGCACTTCCGCCGCCCAGGCCCCGCCCCTTTCCCCGCCCCGCCGCGCCACGCCCAGCCGAGTGGCTCTATGGTTCTCCGACCGCAACGCCGGCGGCCTCAGGGCGGGAGGGCGCGTTCGCGTGCTCGGTGCGGGCAGCCCCGGTGGGGCCCAGATGCGCCTCCCGCTCGGCGCCCGGCTCCGTAGGACGCGGTGACGCCGGTGTCCGCCCCGGGGAAGACCGGGAGTCCCGCCGCGCCCGCA    0       0.9026150390625
+  ```
