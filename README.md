@@ -14,6 +14,7 @@ tar -xzvf data.tar.gz
 ```
 Verify data integrity
 `ls data`
+
 `CHS  GHTS  hg38.fa  hg38.fa.fai  HTS  PBM  SMS`
 
 Install Mamba
