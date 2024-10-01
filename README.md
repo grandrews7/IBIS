@@ -95,7 +95,19 @@ python3 scripts/PWM-G2A-ZMotif.py -tf {Genomic TF} -assay {CHS|GHTS} -peaks {all
 -  `d`: Directory where challenge data is stored.
 
 #### Outputs
-- 'motifs.txt.gz` Technically a `BED` file. Locations of motif sites within the input peaks.
-  ```
-  chr1    959248  959288  0       16.067575       +       CCCGAAGCGTGCACCCCACTTCCGGCCCCAGAATGCCGCG        chr1    959036  959536  959286  31.4865 AAGCCCGAAGCTAGGAACTCGTCCACCGTCAGCTCCGCCAGGCGCCTGCGGGTCACGCAGGAGTCACAGCTGCCCGCACGCCCAGCTCGCCCCAGCCCCGCTGAGAGGAGCAAGAAAAGCCCCCTTGGATACAGACACCCACCGGGAGGCCAAATCGGCCCTCGGACCCGCGGCTTACCTCTTGCGGCTCCCCGCAGCTGCCATGACACCAACCCGAAGCGTGCACCCCACTTCCGGCCCCAGAATGCCGCGCGGCTGCGCACTTCCGCCGCCCAGGCCCCGCCCCTTTCCCCGCCCCGCCGCGCCACGCCCAGCCGAGTGGCTCTATGGTTCTCCGACCGCAACGCCGGCGGCCTCAGGGCGGGAGGGCGCGTTCGCGTGCTCGGTGCGGGCAGCCCCGGTGGGGCCCAGATGCGCCTCCCGCTCGGCGCCCGGCTCCGTAGGACGCGGTGACGCCGGTGTCCGCCCCGGGGAAGACCGGGAGTCCCGCCGCGCCCGCA    0       0.9026150390625
-  ```
+- `motifs.txt.gz` Technically a BED file. Locations of motif sites within the input peaks. Columns are...
+  1. `chrom` chromosome of motif site
+  2. `start` start position of motif site
+  3. `end` end position of motif site
+  4. `kernel` convolution kernel motif site is from
+  5. `score` score of convolution kernel over motif site
+  6. `strand` strand of motif site
+  7. `seq` sequence of motif site
+  8. `chrom_peak` peak of chromosome motif site orignated from
+  9. `start_peak` start position of peak
+  10. `end_peak` end position of peak
+  11. `abs_summit_peak` position of summit of peak of motif site
+  12. `signal` peak signal
+  13. `seq_peak` sequence of peak
+  14. `distance` from motif site to peak (should all be 0)
+  15. `auc` auROC of corresponding kernel / motif. Used for ranking significance of motifs
