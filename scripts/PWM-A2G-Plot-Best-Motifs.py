@@ -1,9 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[14]:
-
-
 import tensorflow as tf
 tf.__version__
 tf.compat.v1.disable_eager_execution()
@@ -98,8 +92,14 @@ def get_ZMotif_motifs(motifs_file):
     ppm = ppm.div(ppm.sum(axis=1), axis=0)
     return([TF, cycle, thresh, tmp_df.shape[0], auc, ppm])
 
+def list_str(values):
+    return values.split(',')
+
 
 parser = argparse.ArgumentParser(description='Plot and save best motifs')
+parser.add_argument('-TFs', '--TFs',
+                    help='Transcription factors to plot and save', type=list_str, required=True, default=None)
+
 parser.add_argument('-d', '--data_dir',
                     help='Data directory', type=str, required=True, default=None)
 
@@ -119,10 +119,13 @@ parser.add_argument('-f_logos', '--final_logos',
                     help='Final logos file (plot)', type=str, required=True, default=None)
 
 args = parser.parse_args()
+
+TFs = args.TFs
+
 data_dir = args.data_dir
 results_dir = args.results_dir
-print("Results dir:{}".format(results_dir))
-print("Data dir:{}".format(data_dir))
+print("Results dir: {}".format(results_dir))
+print("Data dir: {}".format(data_dir))
 
 leaderboard_motifs = args.leaderboard_motifs
 leaderboard_logos = args.leaderboard_logos
@@ -131,17 +134,20 @@ final_motifs = args.final_motifs
 final_logos = args.final_logos
 
 nCPUs = 4
-print("{}/*/motifs.txt.gz".format(results_dir))
 
-motifs_files = sorted([x for x in glob.glob("{}/*/motifs.txt.gz".format(results_dir))])
+motifs_files = []
+for TF in TFs:
+    motifs_files += sorted([x for x in glob.glob("{}/{}*/motifs.txt.gz".format(results_dir, TF))])
 print("There are {} motifs files".format(len(motifs_files)))
 
 PPMs = run_imap_multiprocessing(func=get_ZMotif_motifs, argument_list=motifs_files, num_processes=nCPUs)
 
 L_TFs = ["LEF1", "NACC2", "NFKB1", "RORB","TIGD3"]
 F_TFs = [x for x in os.listdir("{}/HTS/".format(data_dir)) if x not in L_TFs]
-print(L_TFs)
-print(F_TFs)
+
+L_TFs = [_ for _ in L_TFs if _ in TFs]
+F_TFs = [_ for _ in F_TFs if _ in TFs]
+
 
 fig, axes = plt.subplots(5,4, tight_layout=True, figsize=(16,8))
 with open(leaderboard_motifs, "w") as f:

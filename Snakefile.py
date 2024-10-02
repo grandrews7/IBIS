@@ -1,22 +1,36 @@
 import os
 import itertools
 import glob
+import sys
+
+TFs_of_interest = os.listdir("data/CHS") + os.listdir("data/HTS")
+nReps = 20
+# Please place the TFs you'd like to run here!
+# Can be any combination of genomic / artifical and leaderboard / final TFs 
+TFs_of_interest = ["NFKB1", "LEF1", "TIGD3", "SP140L", "USF3", "CAMTA1"]
+#nReps = 1
+
+print("TFs of interest:", *TFs_of_interest)
+reps = [i for i in range(nReps)]
 
 if not os.path.exists("Results"):
     os.mkdir("Results")
     
 data_dir = "./data/"
     
-G2A_TFs = os.listdir("./data/CHS")
+G2A_TFs = [_ for _ in os.listdir("./data/CHS") if _ in TFs_of_interest]
+print("Genomic TFs:", *G2A_TFs)
+
 G2A_assays = ["CHS", "GHTS"]
 peaks = ["shared", "all"]
 n_motifs = [1, 16]
-nReps = 20
-reps = [i for i in range(nReps)]
 
-G2A_assays = ["CHS", "GHTS"]
-HTS_TFs = os.listdir("./data/HTS")
-HTS_fastqs = glob.glob("./data/HTS/*/*fastq.gz")
+HTS_TFs = [_ for _ in os.listdir("./data/HTS") if _ in TFs_of_interest]
+print("HTS TFs:", *HTS_TFs)
+HTS_fastqs = []
+for _ in HTS_TFs:
+    HTS_fastqs += glob.glob("./data/HTS/{}/*fastq.gz".format(_))
+    
 HTS_TFs_cycles = []
 for fastq in HTS_fastqs:
     split = os.path.basename(fastq).split("_")
@@ -53,7 +67,7 @@ rule PWM_G2A_STREME:
     input: "Results/PWM-G2A-ZMotif-STREME/{tf}-{assay}-{peaks}-{n}-{rep}/motifs.txt.gz"
     output: 
         "Results/PWM-G2A-ZMotif-STREME/{tf}-{assay}-{peaks}-{n}-{rep}/streme.pkl", 
-        "Results/PWM-G2A-ZMotif-STREME/{tf}-{assay}-{peaks}-{n}-{rep}/steme-logos.png"
+        "Results/PWM-G2A-ZMotif-STREME/{tf}-{assay}-{peaks}-{n}-{rep}/streme-logos.png"
     threads: 4
     singularity:
         "docker://andrewsg/ibis:1.15"
@@ -100,9 +114,11 @@ rule PWM_G2A_Plot_Save:
     log:
         out = "logs/PWM_G2A_Plot_Save/log.out",
         err = "logs/PWM_G2A_Plot_Save/log.err"
+    params:
+        TFs = ",".join(G2A_TFs)
     shell:
         """
-        python scripts/PWM-G2A-Plot-Best-Motifs.py -d data -r Results/PWM-G2A-CV/ -l_motifs {output.l_motifs} -f_motifs {output.f_motifs} -l_logos {output.l_logos} -f_logos {output.f_logos}
+        python scripts/PWM-G2A-Plot-Best-Motifs.py -TFs {params.TFs} -d data -r Results/PWM-G2A-CV/ -l_motifs {output.l_motifs} -f_motifs {output.f_motifs} -l_logos {output.l_logos} -f_logos {output.f_logos}
         """
         
         
@@ -136,8 +152,10 @@ rule PWM_A2G_Plot_Save:
     log:
         out = "logs/PWM_A2G_Plot_Save/log.out",
         err = "logs/PWM_A2G_Plot_Save/log.err"
+    params:
+        TFs = ",".join(HTS_TFs)
     shell:
         """
-        python scripts/PWM-A2G-Plot-Best-Motifs.py -d data -r Results/PWM-A2G-ZMotif -l_motifs {output.l_motifs} -f_motifs {output.f_motifs} -l_logos {output.l_logos} -f_logos {output.f_logos}
+        python scripts/PWM-A2G-Plot-Best-Motifs.py -TFs {params.TFs} -d data -r Results/PWM-A2G-ZMotif -l_motifs {output.l_motifs} -f_motifs {output.f_motifs} -l_logos {output.l_logos} -f_logos {output.f_logos}
         """
         
