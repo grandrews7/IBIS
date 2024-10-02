@@ -52,7 +52,7 @@ Use `-n` to do a dry-run to ensure there are no issues with the workflow itself.
 snakemake --use-conda --cores 80
 ```
 ### Choosing TFs to run
-You can edit the top of the Snakfile to choose which TFs you'd like to run the pipeline. By default, the pipeline will be run on all 30 TFs, but this can be over-written by placing the TFs you'd like to run in `TFs_of_interest`. I have verified that this will work for any combination of TFs from any combination of assays and phases of the challenge. If no leaderboard or final TFs are chosen, blank, placeholder `png` and `txt` files will be generated so Snakemake does not get mad. You can also change the number of replicates. 20 was definitely overkill, and largely inspired by the zinc-finger proteins in the leaderboard phase that have long motifs that can be cut-off due to the randomness of neural networks
+You can edit the top of the `Snakfile` to choose which TFs you'd like to run the pipeline. By default, the pipeline will be run on all 30 TFs, but this can be over-written by placing the TFs you'd like to run in `TFs_of_interest`. I have verified that this will work for any combination of TFs from any combination of assays and phases of the challenge. If no leaderboard or final TFs are chosen, blank, placeholder `png` and `txt` files will be generated so Snakemake does not get mad. You can also change the number of replicates. 20 was definitely overkill, and largely inspired by the zinc-finger proteins in the leaderboard phase that have long motifs that can be cut-off due to the randomness of neural networks
 ```
 TFs_of_interest = os.listdir("data/CHS") + os.listdir("data/HTS")
 nReps = 20
