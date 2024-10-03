@@ -4,10 +4,10 @@ import glob
 import sys
 
 TFs_of_interest = os.listdir("data/CHS") + os.listdir("data/HTS")
-nReps = 20
-# Please uncomment and place the TFs you'd like to run here!
+nReps = 1
+# Please place the TFs you'd like to run here!
 # Can be any combination of genomic / artifical and leaderboard / final TFs 
-TFs_of_interest = ["NFKB1", "LEF1", "TIGD3", "SP140L", "USF3", "CAMTA1"]
+#TFs_of_interest = ["NFKB1", "LEF1", "TIGD3", "SP140L", "USF3", "CAMTA1"]
 #nReps = 1
 
 print("TFs of interest:", *TFs_of_interest)
