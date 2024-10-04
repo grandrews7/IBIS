@@ -1,7 +1,7 @@
-executor: cluster-generic
-cluster-generic-submit-cmd: "bsub -q long -W 480 -n 4 -R 'rusage[mem=8000]' -R 'span[hosts=1]' -m INTEL -o /dev/null -e /dev/null"
-jobs: 400
-restart-times: 1
+# executor: cluster-generic
+# cluster-generic-submit-cmd: "bsub -q long -W 480 -n 4 -R 'rusage[mem=8000]' -R 'span[hosts=1]' -m INTEL -o /dev/null -e /dev/null"
+# jobs: 400
+# restart-times: 1
 use-apptainer: True
 # use-conda: True
 

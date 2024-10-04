@@ -121,15 +121,19 @@ if len(L_TFs) > 0:
             logomaker.Logo(ppm.applymap(get_information_content), ax=ax)
             ax.set_ylim([0,2])
             metadata = og_files[plot_i]
-            if "streme" in metadata:
-                title = "{} STREME".format(TF)
+            
+            metadata = og_files[plot_i]
+            #metadata format Results/PWM-G2A-ZMotif-STREME/CAMTA1-CHS-shared-1-12/streme.pkl-0-10
+            metadata_split = metadata.split("/")
+            if "streme" in metadata_split[-1]:
+                title = "TF: {}; Alg: STREME;".format(TF)
             else:
-                title = "{} ZMotif".format(TF)
+                title = "TF: {}; Alg: ZMotif;".format(TF)
 
-            if "STREME" in title:
-                ax.set_title(title, fontdict={"color" : "blue"})
-            else:
-                ax.set_title(title, fontdict={"color" : "red"})
+            peaks = metadata_split[-2].split("-")[2]
+            title += " Peaks: {}".format(peaks)
+            ax.set_title(title)
+            
             if plot_i == 0 and TF_i == 0:
                 ax.spines['top'].set_visible(False)
                 ax.spines['right'].set_visible(False)
@@ -183,15 +187,16 @@ if len(F_TFs) > 0:
             logomaker.Logo(ppm.applymap(get_information_content), ax=ax)
             ax.set_ylim([0,2])
             metadata = og_files[plot_i]
-            if "streme" in metadata:
-                title = "{} STREME".format(TF)
+            #metadata format Results/PWM-G2A-ZMotif-STREME/CAMTA1-CHS-shared-1-12/streme.pkl-0-10
+            metadata_split = metadata.split("/")
+            if "streme" in metadata_split[-1]:
+                title = "TF: {}; Alg: STREME;".format(TF)
             else:
-                title = "{} ZMotif".format(TF)
+                title = "TF: {}; Alg: ZMotif;".format(TF)
 
-            if "STREME" in title:
-                ax.set_title(title, fontdict={"color" : "blue"})
-            else:
-                ax.set_title(title, fontdict={"color" : "red"})
+            peaks = metadata_split[-2].split("-")[2]
+            title += " Peaks: {}".format(peaks)
+            ax.set_title(title)
             if plot_i == 0 and TF_i == 0:
                 ax.spines['top'].set_visible(False)
                 ax.spines['right'].set_visible(False)
